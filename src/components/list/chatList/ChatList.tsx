@@ -2,13 +2,17 @@ import { useEffect, useState } from "react";
 import "./chatList.css";
 import AddUser from "./addUser/AddUser";
 import { useUserStore } from "../../../lib/userStore";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
 import { db } from "../../../lib/firebase";
+import { useChatStore } from "../../../lib/chatStore";
 
 export default function ChatList() {
   const [addMode, setAddMode] = useState(false);
   const [chats, setChats] = useState<ChatWithUser[]>([]);
+  const [input, setInput] = useState("");
+
   const { currentUser } = useUserStore();
+  const { user, chatId, changeChat } = useChatStore();
 
   useEffect(() => {
     const unSub = onSnapshot(
@@ -34,12 +38,46 @@ export default function ChatList() {
     };
   }, []);
 
+  const handleSelect = async (chat: Chat) => {
+    const userChats = chats.map((item) => {
+      const { user, ...rest } = item;
+      return rest;
+    });
+
+    const chatIndex = userChats.findIndex(
+      (item) => item.chatId === chat.chatId
+    );
+
+    userChats[chatIndex].isSeen = true;
+
+    const userChatsRef = doc(db, "userchats", currentUser?.id);
+
+    try {
+      await updateDoc(userChatsRef, {
+        chats: userChats,
+      });
+      changeChat(chat.chatId, chats[chatIndex].user);
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  const filteredChats = chats.filter(
+    (chat) =>
+      chat?.user.username.toLowerCase().includes(input.toLowerCase()) ||
+      chat?.user.username.toLowerCase().includes(input.toLowerCase())
+  );
+
   return (
     <div className="chatList">
       <div className="search">
         <div className="searchBar">
           <img src="./search.png" alt="" />
-          <input type="text" placeholder="Search" />
+          <input
+            type="text"
+            placeholder="Search"
+            onChange={(e) => setInput(e.target.value)}
+          />
         </div>
         <img
           src={addMode ? "./minus.png" : "./plus.png"}
@@ -49,23 +87,30 @@ export default function ChatList() {
         />
       </div>
 
-      {chats.map((chat) => (
-        <div className="item" key={chat.chatId}>
-          <img src={chat.user.avatar || "./avatar.png"} alt="" />
+      {filteredChats.map((chat) => (
+        <div
+          className="item"
+          key={chat.chatId}
+          onClick={() => handleSelect(chat)}
+          style={{ backgroundColor: chat?.isSeen ? "transparent" : "5183fe" }}>
+          <img
+            src={
+              chat.user.blocked.includes(currentUser?.id)
+                ? "./avatar.png"
+                : chat.user.avatar || "./avatar.png"
+            }
+            alt=""
+          />
           <div className="texts">
-            <span>{chat.user.username}</span>
+            <span>
+              {chat.user.blocked.includes(currentUser?.id)
+                ? "User"
+                : chat.user.username}
+            </span>
             <p>{chat.lastMessage}</p>
           </div>
         </div>
       ))}
-
-      <div className="item">
-        <img src="./avatar.png" alt="" />
-        <div className="texts">
-          <span>Jane Doe</span>
-          <p>Hello</p>
-        </div>
-      </div>
 
       {addMode && <AddUser />}
     </div>
